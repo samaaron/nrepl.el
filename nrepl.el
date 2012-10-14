@@ -174,6 +174,7 @@ joined together.")
 (defun nrepl-make-variables-buffer-local (&rest variables)
   (mapcar #'make-variable-buffer-local variables))
 
+
 (nrepl-make-variables-buffer-local
  'nrepl-ops
  'nrepl-session
@@ -346,7 +347,7 @@ joined together.")
                       var)))
     (nrepl-send-string form
                        (nrepl-jump-to-def-handler (current-buffer))
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-jump (query)
@@ -360,7 +361,7 @@ joined together.")
   (let ((strlst (plist-get
                  (nrepl-send-string-sync
                   (format "(complete.core/completions \"%s\" *ns*)" str)
-                  nrepl-buffer-ns
+                  (nrepl-current-ns)
                   (nrepl-current-tooling-session))
                  :value)))
     (when strlst
@@ -423,7 +424,7 @@ joined together.")
         (nrepl-send-string form
                            (nrepl-eldoc-handler (current-buffer)
                                                 thing)
-                           nrepl-buffer-ns
+                           (nrepl-current-ns)
                            (nrepl-current-tooling-session)))))
 
 (defun nrepl-turn-on-eldoc-mode ()
@@ -730,21 +731,21 @@ in a macroexpansion buffer. Prefix argument forces pretty-printed output."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-popup-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval-print (form)
   "Evaluate the given form and print value in current buffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval (form)
   "Evaluate the given form and print value in minibuffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-send-load-file (file-contents file-path file-name)
   "Evaluate the given form and print value in minibuffer."
@@ -1363,7 +1364,11 @@ buffer."
            "code" input)))
 
 (defun nrepl-send-string (input callback &optional ns session)
-  (nrepl-send-request (nrepl-eval-request input ns session) callback))
+  (let ((ns (if (string-match "\w*\(ns " input)
+                "user"
+              ns)))
+
+    (nrepl-send-request (nrepl-eval-request input ns session) callback)))
 
 (defun nrepl-sync-request-handler (buffer)
   (nrepl-make-response-handler buffer
@@ -1426,7 +1431,7 @@ If NEWLINE is true then add a newline at the end of the input."
     (goto-char (point-max))
     (nrepl-mark-input-start)
     (nrepl-mark-output-start)
-    (nrepl-send-string input (nrepl-handler (current-buffer)) nrepl-buffer-ns)))
+    (nrepl-send-string input (nrepl-handler (current-buffer)) (nrepl-current-ns))))
 
 (defun nrepl-newline-and-indent ()
   "Insert a newline, then indent the next line.
@@ -1687,7 +1692,7 @@ the buffer should appear."
   (setq nrepl-ido-ns ns)
   (nrepl-send-string (prin1-to-string (nrepl-ido-form nrepl-ido-ns))
                      (nrepl-ido-read-var-handler ido-callback (current-buffer))
-                     nrepl-buffer-ns
+                     (nrepl-current-ns)
                      (nrepl-current-tooling-session)))
 
 (defun nrepl-operator-before-point ()
@@ -1712,7 +1717,7 @@ symbol at point, or if QUERY is non-nil."
         (doc-buffer (nrepl-popup-buffer "*nREPL doc*" t)))
     (nrepl-send-string form
                        (nrepl-popup-eval-out-handler doc-buffer)
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-doc (query)
