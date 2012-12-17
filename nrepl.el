@@ -634,7 +634,7 @@ Emacs behavior use `indent-for-tab-command'."
         (nrepl-send-string "(if-let [pst+ (clojure.core/resolve 'clj-stacktrace.repl/pst+)]
                         (pst+ *e) (clojure.stacktrace/print-stack-trace *e))"
                            (nrepl-make-response-handler
-                            (nrepl-popup-buffer nrepl-error-buffer)
+                            (nrepl-popup-buffer nrepl-error-buffer t)
                             nil
                             'nrepl-emit-into-color-buffer nil nil) nil session))
     ;; TODO: maybe put the stacktrace in a tmp buffer somewhere that the user
@@ -663,7 +663,10 @@ Emacs behavior use `indent-for-tab-command'."
    "Mode for nrepl popup buffers"
    nil
    (" nREPL-tmp")
-   '(("q" .  nrepl-popup-buffer-quit-function)))
+   (let ((map (make-sparse-keymap)))
+     (define-key map (kbd "q") 'nrepl-popup-buffer-quit-function)
+     (define-key map (kbd "C-g") 'nrepl-popup-buffer-quit-function)
+    map))
 
 (make-variable-buffer-local
  (defvar nrepl-popup-buffer-quit-function 'nrepl-popup-buffer-quit
