@@ -320,14 +320,23 @@ Emacs behavior use `indent-for-tab-command'."
    (save-excursion (backward-sexp) (point))
    (point)))
 
+(defun nrepl-find-file (filename)
+  "Switch to a buffer visiting filename, removing the any leading slash if on windows.
+Uses `find-file'."
+  (let ((fn (if (and (eq system-type 'windows-nt)
+                     (string-match "^/" filename))
+                (substring filename 1)
+              filename)))
+    (find-file fn)))
+
 (defun nrepl-find-resource (resource)
   (cond ((string-match "^file:\\(.+\\)" resource)
-         (find-file (match-string 1 resource)))
+         (nrepl-find-file (match-string 1 resource)))
         ((string-match "^\\(jar\\|zip\\):file:\\(.+\\)!/\\(.+\\)" resource)
          (let* ((jar (match-string 2 resource))
                 (path (match-string 3 resource))
                 (buffer-already-open (get-buffer (file-name-nondirectory jar))))
-           (find-file jar)
+           (nrepl-find-file jar)
            (goto-char (point-min))
            (search-forward path)
            (let ((opened-buffer (current-buffer)))
@@ -363,10 +372,10 @@ Emacs behavior use `indent-for-tab-command'."
 (defun nrepl-jump-to-def (var)
   "Jump to the definition of the var at point."
   (let ((form (format "((clojure.core/juxt
-                         (comp clojure.core/str clojure.java.io/resource :file)
-                         (comp clojure.core/str clojure.java.io/file :file) :line)
-                        (clojure.core/meta (clojure.core/resolve '%s)))"
-                      var)))
+                         (clojure.core/comp clojure.core/str clojure.java.io/resource :file)
+                         (clojure.core/comp clojure.core/str clojure.java.io/file :file) :line)
+                        (clojure.core/meta (clojure.core/ns-resolve '%s '%s)))"
+                      (nrepl-current-ns) var)))
     (nrepl-send-string form
                        (nrepl-jump-to-def-handler (current-buffer))
                        (nrepl-current-ns)
@@ -1776,7 +1785,8 @@ buffer in which the command was invoked."
         (delete-region start end)
         (save-excursion
           (goto-char start)
-          (insert ";;; output cleared"))))))
+          (insert
+           (propertize ";;; output cleared" 'face 'font-lock-comment-face)))))))
 
 (defun nrepl-find-ns ()
   (or (save-restriction
@@ -1968,7 +1978,9 @@ under point, prompts for a var."
 
 (defun nrepl-src-handler (symbol)
   (let ((form (format "(clojure.repl/source %s)" symbol))
-        (doc-buffer (nrepl-popup-buffer "*nREPL doc*" t)))
+        (doc-buffer (nrepl-popup-buffer "*nREPL doc*" nil)))
+    (with-current-buffer doc-buffer
+      (clojure-mode))
     (nrepl-send-string form
                        (nrepl-popup-eval-out-handler doc-buffer)
                        nrepl-buffer-ns
