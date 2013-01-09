@@ -89,6 +89,9 @@
 (defvar nrepl-server-buffer "*nrepl-server*")
 (defvar nrepl-nrepl-buffer "*nrepl*")
 (defvar nrepl-error-buffer "*nrepl-error*")
+(defvar nrepl-doc-buffer "*nrepl-doc*")
+(defvar nrepl-src-buffer "*nrepl-src*")
+(defvar nrepl-macroexpansion-buffer "*nrepl-macroexpansion*")
 
 (defface nrepl-prompt-face
   '((t (:inherit font-lock-keyword-face)))
@@ -177,7 +180,8 @@ joined together.")
 
 (defcustom nrepl-popup-stacktraces t
   "Non-nil means pop-up error stacktraces.
-   Nil means do not, useful when in repl"
+Nil means show only an error message in the minibuffer;
+useful when in REPL or you don't care about the stacktraces."
   :type 'boolean
   :group 'nrepl)
 
@@ -636,9 +640,7 @@ Uses `find-file'."
 (defun nrepl-default-err-handler (buffer ex root-ex session)
   ;; TODO: use ex and root-ex as fallback values to display when pst/print-stack-trace-not-found
   (if (or nrepl-popup-stacktraces
-          (not (eq 'nrepl-mode
-                   (cdr (assq 'major-mode
-                              (buffer-local-variables buffer))))))
+          (not (member (buffer-local-value 'major-mode buffer) '(nrepl-mode clojure-mode))))
       (with-current-buffer buffer
         (nrepl-send-string "(if-let [pst+ (clojure.core/resolve 'clj-stacktrace.repl/pst+)]
                         (pst+ *e) (clojure.stacktrace/print-stack-trace *e))"
@@ -731,6 +733,7 @@ Uses `find-file'."
    (interactive)
    (let ((buffer (current-buffer)))
      (nrepl-close-popup-window)
+
      (when kill-buffer-p
        (kill-buffer buffer))))
 
@@ -1217,13 +1220,15 @@ This function is meant to be used in hooks to avoid lambda
     map))
 
 (define-minor-mode nrepl-macroexpansion-minor-mode
-   "Minor mode for nrepl macroexpansion."
+   "Minor mode for nrepl macroexpansion.
+
+\\{nrepl-macroexpansion-minor-mode-map}"
    nil
    " Macroexpand"
    nrepl-macroexpansion-minor-mode-map)
 
 (defun nrepl-create-macroexpansion-buffer ()
-  (with-current-buffer (nrepl-popup-buffer "*nREPL Macroexpansion*" t)
+  (with-current-buffer (nrepl-popup-buffer nrepl-macroexpansion-buffer t)
     (clojure-mode)
     (clojure-disable-nrepl)
     (nrepl-macroexpansion-minor-mode 1)
@@ -1286,7 +1291,9 @@ This function is meant to be used in hooks to avoid lambda
 
 ;;;###autoload
 (define-minor-mode nrepl-interaction-mode
-  "Minor mode for nrepl interaction from a Clojure buffer."
+  "Minor mode for nrepl interaction from a Clojure buffer.
+
+\\{nrepl-interaction-mode-map}"
    nil
    " nREPL"
    nrepl-interaction-mode-map
@@ -1294,13 +1301,10 @@ This function is meant to be used in hooks to avoid lambda
    (add-to-list 'completion-at-point-functions
                 'nrepl-complete-at-point))
 
-(defun nrepl-mode ()
-  "Major mode for nREPL interactions."
-  (interactive)
-  (kill-all-local-variables)
-  (use-local-map nrepl-mode-map)
-  (setq mode-name "nREPL"
-        major-mode 'nrepl-mode)
+(define-derived-mode nrepl-mode fundamental-mode "nREPL"
+  "Major mode for nREPL interactions.
+
+\\{nrepl-mode-map}"
   (set (make-local-variable 'indent-line-function) 'lisp-indent-line)
   (make-local-variable 'completion-at-point-functions)
   (add-to-list 'completion-at-point-functions
@@ -1313,7 +1317,12 @@ This function is meant to be used in hooks to avoid lambda
     (nrepl-history-load nrepl-history-file)
     (add-hook 'kill-buffer-hook 'nrepl-history-just-save t t)
     (add-hook 'kill-emacs-hook 'nrepl-history-just-save))
-  (run-mode-hooks 'nrepl-mode-hook))
+
+  (add-hook 'paredit-mode-hook
+            (lambda ()
+              (when (>= paredit-version 21)
+                (define-key nrepl-mode-map "{" 'paredit-open-curly)
+                (define-key nrepl-mode-map "}" 'paredit-close-curly)))))
 
 ;;; communication
 (defcustom nrepl-lein-command
@@ -1891,6 +1900,7 @@ the buffer should appear."
   "Return the name of the symbol at point, otherwise nil."
   (let ((str (thing-at-point 'symbol)))
     (and str
+         (not (equal str (concat (nrepl-find-ns) "> ")))
          (not (equal str ""))
          (substring-no-properties str))))
 
@@ -1963,7 +1973,7 @@ symbol at point, or if QUERY is non-nil."
 
 (defun nrepl-doc-handler (symbol)
   (let ((form (format "(clojure.repl/doc %s)" symbol))
-        (doc-buffer (nrepl-popup-buffer "*nREPL doc*" t)))
+        (doc-buffer (nrepl-popup-buffer nrepl-doc-buffer t)))
     (nrepl-send-string form
                        (nrepl-popup-eval-out-handler doc-buffer)
                        nrepl-buffer-ns
@@ -1978,11 +1988,11 @@ under point, prompts for a var."
 
 (defun nrepl-src-handler (symbol)
   (let ((form (format "(clojure.repl/source %s)" symbol))
-        (doc-buffer (nrepl-popup-buffer "*nREPL doc*" nil)))
-    (with-current-buffer doc-buffer
+        (src-buffer (nrepl-popup-buffer nrepl-src-buffer nil)))
+    (with-current-buffer src-buffer
       (clojure-mode))
     (nrepl-send-string form
-                       (nrepl-popup-eval-out-handler doc-buffer)
+                       (nrepl-popup-eval-out-handler src-buffer)
                        nrepl-buffer-ns
                        (nrepl-current-tooling-session))))
 
@@ -2126,7 +2136,10 @@ under point, prompts for a var."
   (dolist (buf-name `(,nrepl-connection-buffer
                       ,nrepl-server-buffer
                       ,nrepl-nrepl-buffer
-                      ,nrepl-error-buffer))
+                      ,nrepl-error-buffer
+                      ,nrepl-doc-buffer
+                      ,nrepl-src-buffer
+                      ,nrepl-macroexpansion-buffer))
     (when (get-buffer-process buf-name)
       (delete-process (get-buffer-process buf-name)))
     (when (get-buffer buf-name)
