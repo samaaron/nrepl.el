@@ -387,7 +387,7 @@ Uses `find-file'."
                       (nrepl-current-ns) var)))
     (nrepl-send-string form
                        (nrepl-jump-to-def-handler (current-buffer))
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-jump (query)
@@ -401,7 +401,7 @@ Uses `find-file'."
   (let ((strlst (plist-get
                  (nrepl-send-string-sync
                   (format "(require 'complete.core) (complete.core/completions \"%s\" *ns*)" str)
-                  nrepl-buffer-ns
+                  (nrepl-current-ns)
                   (nrepl-current-tooling-session))
                  :value)))
     (when strlst
@@ -413,7 +413,7 @@ Uses `find-file'."
                          (nrepl-send-request-sync
                           (list "op" "complete"
                                 "session" (nrepl-current-tooling-session)
-                                "ns" nrepl-buffer-ns
+                                "ns" (nrepl-current-ns)
                                 "symbol" str))
                          :value)))
     (when strlst
@@ -486,7 +486,7 @@ Uses `find-file'."
         (nrepl-send-string form
                            (nrepl-eldoc-handler (current-buffer)
                                                 (symbol-name thing) pos)
-                           nrepl-buffer-ns
+                           (nrepl-current-ns)
                            (nrepl-current-tooling-session)))))
 
 (defun nrepl-turn-on-eldoc-mode ()
@@ -503,7 +503,7 @@ Uses `find-file'."
 (defun nrepl-javadoc-op (symbol-name)
   (nrepl-send-op
    "javadoc"
-   `("symbol" ,symbol-name "ns" ,nrepl-buffer-ns
+   `("symbol" ,symbol-name "ns" ,(nrepl-current-ns)
      "local-paths" ,(mapconcat #'identity nrepl-javadoc-local-paths " "))
    (nrepl-make-response-handler
     (current-buffer)
@@ -802,7 +802,7 @@ Uses `find-file'."
   "Evaluate the expression preceding point and print the result into the special buffer."
   (let ((form (nrepl-macroexpand-form expander expr)))
     (setq nrepl-last-macroexpand-expression form)
-    (nrepl-send-string form (nrepl-macroexpand-handler buffer nrepl-buffer-ns) nrepl-buffer-ns)))
+    (nrepl-send-string form (nrepl-macroexpand-handler buffer (nrepl-current-ns)) (nrepl-current-ns))))
 
 (defun nrepl-macroexpand-expr-inplace (expander)
    "Substitutes the current form at point with its macroexpansion."
@@ -810,12 +810,12 @@ Uses `find-file'."
    (destructuring-bind (expr bounds) (nrepl-last-expression-with-bounds)
      (nrepl-send-string (nrepl-macroexpand-form expander expr)
                         (nrepl-macroexpand-inplace-handler (current-buffer) (car bounds) (cdr bounds) (point))
-                        nrepl-buffer-ns)))
+                        (nrepl-current-ns))))
 
 (defun nrepl-macroexpand-again ()
    "Reperform the last macroexpansion."
    (interactive)
-   (nrepl-send-string nrepl-last-macroexpand-expression (nrepl-macroexpand-handler (current-buffer) nrepl-buffer-ns) nrepl-buffer-ns))
+   (nrepl-send-string nrepl-last-macroexpand-expression (nrepl-macroexpand-handler (current-buffer) (nrepl-current-ns)) (nrepl-current-ns)))
 
 (defun nrepl-macroexpand-1 (&optional prefix)
   "Invoke 'macroexpand-1' on the expression preceding point and display the result in a macroexpansion buffer.
@@ -865,21 +865,21 @@ If invoked with a prefix argument, use 'macroexpand' instead of 'macroexpand-1'.
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-popup-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval-print (form)
   "Evaluate the given form and print value in current buffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval (form)
   "Evaluate the given form and print value in minibuffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-send-op (op attributes handler)
   "Send the specified op."
@@ -887,7 +887,7 @@ If invoked with a prefix argument, use 'macroexpand' instead of 'macroexpand-1'.
     (nrepl-send-request (append
                          (list "op" op
                                "session" (nrepl-current-session)
-                               "ns" nrepl-buffer-ns)
+                               "ns" (nrepl-current-ns))
                          attributes)
                         handler)))
 
@@ -1410,7 +1410,7 @@ Return the position of the prompt beginning."
     (save-excursion
       (nrepl-save-marker nrepl-output-start
         (nrepl-save-marker nrepl-output-end
-          (nrepl-insert-prompt nrepl-buffer-ns))))
+          (nrepl-insert-prompt (nrepl-current-ns)))))
     (nrepl-show-maximum-output)))
 
 (defun nrepl-emit-result (buffer string &optional bol)
@@ -1583,7 +1583,10 @@ buffer."
            "code" input)))
 
 (defun nrepl-send-string (input callback &optional ns session)
-  (nrepl-send-request (nrepl-eval-request input ns session) callback))
+  (let ((ns (if (string-match "[[:space:]]*\(ns\\([[:space:]]*$\\|[[:space:]]+\\)" input)
+                "user"
+              ns)))
+    (nrepl-send-request (nrepl-eval-request input ns session) callback)))
 
 (defun nrepl-sync-request-handler (buffer)
   (nrepl-make-response-handler buffer
@@ -1646,7 +1649,7 @@ If NEWLINE is true then add a newline at the end of the input."
     (goto-char (point-max))
     (nrepl-mark-input-start)
     (nrepl-mark-output-start)
-    (nrepl-send-string input (nrepl-handler (current-buffer)) nrepl-buffer-ns)))
+    (nrepl-send-string input (nrepl-handler (current-buffer)) (nrepl-current-ns))))
 
 (defun nrepl-newline-and-indent ()
   "Insert a newline, then indent the next line.
