@@ -2737,7 +2737,7 @@ restart the server."
   "Connect nrepl to HOST and PORT."
   (interactive (list (read-string "Host: " nrepl-host nil nrepl-host)
                      (string-to-number (read-string "Port: " nrepl-port nil nrepl-port))))
-  (when (nrepl-check-for-nrepl-buffer `(,host ,port) nil)
+  (when (nrepl-check-for-nrepl-buffer nil nil)
     (nrepl-connect host port)))
 
 ;;;###autoload
