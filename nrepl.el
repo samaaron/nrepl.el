@@ -499,7 +499,7 @@ Removes any leading slash if on Windows.  Uses `find-file'."
                       (nrepl-current-ns) var)))
     (nrepl-send-string form
                        (nrepl-jump-to-def-handler (current-buffer))
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-jump (query)
@@ -514,7 +514,7 @@ Removes any leading slash if on Windows.  Uses `find-file'."
   (let ((strlst (plist-get
                  (nrepl-send-string-sync
                   (format "(require 'complete.core) (complete.core/completions \"%s\" *ns*)" str)
-                  nrepl-buffer-ns
+                  (nrepl-current-ns)
                   (nrepl-current-tooling-session))
                  :value)))
     (when strlst
@@ -526,7 +526,7 @@ Removes any leading slash if on Windows.  Uses `find-file'."
                          (nrepl-send-request-sync
                           (list "op" "complete"
                                 "session" (nrepl-current-tooling-session)
-                                "ns" nrepl-buffer-ns
+                                "ns" (nrepl-current-ns)
                                 "symbol" str))
                          :value)))
     (when strlst
@@ -624,7 +624,7 @@ highlighing all arguments matching THE-POS."
     (when thing
       (nrepl-send-string form
                          (nrepl-eldoc-handler (current-buffer) thing pos)
-                         nrepl-buffer-ns
+                         (nrepl-current-ns)
                          (nrepl-current-tooling-session)))))
 
 (defun nrepl-turn-on-eldoc-mode ()
@@ -643,7 +643,7 @@ highlighing all arguments matching THE-POS."
   "Invoke the nREPL \"javadoc\" op on SYMBOL-NAME."
   (nrepl-send-op
    "javadoc"
-   `("symbol" ,symbol-name "ns" ,nrepl-buffer-ns
+   `("symbol" ,symbol-name "ns" ,(nrepl-current-ns)
      "local-paths" ,(mapconcat #'identity nrepl-javadoc-local-paths " "))
    (nrepl-make-response-handler
     (current-buffer)
@@ -954,8 +954,8 @@ START, END and CURRENT-POINT are used to redraw the expansion."
   "Macroexpand, use EXPANDER, the given EXPR from BUFFER."
   (let ((form (nrepl-macroexpand-form expander expr)))
     (setq nrepl-last-macroexpand-expression form)
-    (nrepl-send-string form (nrepl-macroexpand-handler buffer nrepl-buffer-ns)
-                       nrepl-buffer-ns)))
+    (nrepl-send-string form (nrepl-macroexpand-handler buffer (nrepl-current-ns))
+                       (nrepl-current-ns))))
 
 (defun nrepl-macroexpand-expr-inplace (expander)
   "Substitutes the current form at point with its macroexpansion using EXPANDER."
@@ -967,15 +967,15 @@ START, END and CURRENT-POINT are used to redraw the expansion."
                                (nrepl-macroexpand-inplace-handler
                                 (current-buffer)
                                 (car bounds) (cdr bounds) (point))
-                               nrepl-buffer-ns)))))
+                               (nrepl-current-ns))))))
 
 (defun nrepl-macroexpand-again ()
   "Repeat the last macroexpansion."
   (interactive)
   (nrepl-send-string
    nrepl-last-macroexpand-expression
-   (nrepl-macroexpand-handler (current-buffer) nrepl-buffer-ns)
-   nrepl-buffer-ns))
+   (nrepl-macroexpand-handler (current-buffer) (nrepl-current-ns))
+   (nrepl-current-ns)))
 
 (defun nrepl-macroexpand-1 (&optional prefix)
   "Invoke 'macroexpand-1' on the expression at point.
@@ -1035,21 +1035,21 @@ and point is placed at CURRENT-POINT."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-popup-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval-print (form)
   "Evaluate the given FORM and print value in current buffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-print-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-interactive-eval (form)
   "Evaluate the given FORM and print value in minibuffer."
   (let ((buffer (current-buffer)))
     (nrepl-send-string form
                        (nrepl-interactive-eval-handler buffer)
-                       nrepl-buffer-ns)))
+                       (nrepl-current-ns))))
 
 (defun nrepl-send-op (op attributes handler)
   "Send the specified OP with ATTRIBUTES and response HANDLER."
@@ -1057,7 +1057,7 @@ and point is placed at CURRENT-POINT."
     (nrepl-send-request (append
                          (list "op" op
                                "session" (nrepl-current-session)
-                               "ns" nrepl-buffer-ns)
+                               "ns" (nrepl-current-ns))
                          attributes)
                         handler)))
 
@@ -1094,7 +1094,7 @@ Print its value into the current buffer"
         (result-buffer (nrepl-popup-buffer nrepl-result-buffer nil)))
     (nrepl-send-string (format "(clojure.pprint/pprint %s)" form)
                        (nrepl-popup-eval-out-handler result-buffer)
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 ;;;;; History
@@ -1627,7 +1627,7 @@ If BOL is non-nil, emit at the beginning of the line."
     (save-excursion
       (nrepl-save-marker nrepl-output-start
         (nrepl-save-marker nrepl-output-end
-          (nrepl-insert-prompt nrepl-buffer-ns))))
+          (nrepl-insert-prompt (nrepl-current-ns)))))
     (nrepl-show-maximum-output)))
 
 (defun nrepl-emit-result (buffer string &optional bol)
@@ -1929,7 +1929,10 @@ Use SESSION if it is non-nil, otherwise use the current session."
 (defun nrepl-send-string (input callback &optional ns session)
   "Send the request INPUT and register the CALLBACK as the response handler.
 See command `nrepl-eval-request' for details on how NS and SESSION are processed."
-  (nrepl-send-request (nrepl-eval-request input ns session) callback))
+  (let ((ns (if (string-match "[[:space:]]*\(ns\\([[:space:]]*$\\|[[:space:]]+\\)" input)
+                "user"
+              ns)))
+    (nrepl-send-request (nrepl-eval-request input ns session) callback)))
 
 (defun nrepl-sync-request-handler (buffer)
   "Make a synchronous request handler for BUFFER."
@@ -1998,7 +2001,7 @@ If NEWLINE is true then add a newline at the end of the input."
     (goto-char (point-max))
     (nrepl-mark-input-start)
     (nrepl-mark-output-start)
-    (nrepl-send-string form (nrepl-handler (current-buffer)) nrepl-buffer-ns)))
+    (nrepl-send-string form (nrepl-handler (current-buffer)) (nrepl-current-ns))))
 
 (defun nrepl-newline-and-indent ()
   "Insert a newline, then indent the next line.
@@ -2234,7 +2237,7 @@ Insert a banner, unless NOPROMPT is non-nil."
       (nrepl-mode))
     (nrepl-reset-markers)
     (unless noprompt
-      (nrepl-insert-banner nrepl-buffer-ns))
+      (nrepl-insert-banner (nrepl-current-ns)))
     (current-buffer)))
 
 (defun nrepl-repl-buffer ()
@@ -2326,7 +2329,7 @@ the buffer should appear."
   (setq nrepl-ido-ns ns)
   (nrepl-send-string (prin1-to-string (nrepl-ido-form nrepl-ido-ns))
                      (nrepl-ido-read-var-handler ido-callback (current-buffer))
-                     nrepl-buffer-ns
+                     (nrepl-current-ns)
                      (nrepl-current-tooling-session)))
 
 (defun nrepl-read-symbol-name (prompt callback &optional query)
@@ -2337,7 +2340,7 @@ if there is no symbol at point, or if QUERY is non-nil."
   (let ((symbol-name (nrepl-symbol-at-point)))
     (cond ((not (or current-prefix-arg query (not symbol-name)))
            (funcall callback symbol-name))
-          (ido-mode (nrepl-ido-read-var nrepl-buffer-ns callback))
+          (ido-mode (nrepl-ido-read-var (nrepl-current-ns) callback))
           (t (funcall callback (read-from-minibuffer prompt symbol-name))))))
 
 (defun nrepl-doc-handler (symbol)
@@ -2346,7 +2349,7 @@ if there is no symbol at point, or if QUERY is non-nil."
         (doc-buffer (nrepl-popup-buffer nrepl-doc-buffer t)))
     (nrepl-send-string form
                        (nrepl-popup-eval-out-handler doc-buffer)
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-doc (query)
@@ -2365,7 +2368,7 @@ under point, prompts for a var."
       (nrepl-popup-buffer-mode +1))
     (nrepl-send-string form
                        (nrepl-popup-eval-out-handler src-buffer)
-                       nrepl-buffer-ns
+                       (nrepl-current-ns)
                        (nrepl-current-tooling-session))))
 
 (defun nrepl-src (query)
@@ -2658,7 +2661,7 @@ restart the server."
         (lambda (buffer out) (message out))
         (lambda (buffer err) (message err))
         nil)
-       nrepl-buffer-ns
+       (nrepl-current-ns)
        nrepl-tooling-session))))
 
 (defun nrepl-create-nrepl-buffer (process)
