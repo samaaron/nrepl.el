@@ -5,7 +5,7 @@
 ;; Author: Tim King <kingtim@gmail.com>
 ;;         Phil Hagelberg <technomancy@gmail.com>
 ;; URL: http://www.github.com/kingtim/nrepl.el
-;; Version: 0.1.7
+;; Version: 0.1.8
 ;; Keywords: languages, clojure, nrepl
 ;; Package-Requires: ((clojure-mode "2.0.0"))
 
@@ -67,7 +67,7 @@
   :prefix "nrepl-"
   :group 'applications)
 
-(defconst nrepl-current-version "0.1.7-preview"
+(defconst nrepl-current-version "0.1.8-preview"
   "The current nREPL.el version.")
 
 (defun nrepl-version ()
@@ -2822,7 +2822,6 @@ If so ask the user for confirmation."
 
 (defun nrepl--close-buffer (buffer)
   "Close the nrepl BUFFER."
-  (message "Close buffer %s" buffer)
   (when (get-buffer-process buffer)
     (delete-process (get-buffer-process buffer)))
   (when (get-buffer buffer)
